@@ -56,7 +56,7 @@ class FillMissingValuesStrategy(MissingValueHandlingStrategy):
 
 class MissingValueHandler:
     def __init__(self,strategy:MissingValueHandlingStrategy):
-        self.startegy = strategy
+        self.strategy = strategy
         
     def set_strategy(self,strategy:MissingValueHandlingStrategy):
         self.strategy = strategy
@@ -64,7 +64,7 @@ class MissingValueHandler:
         
     def handle_missing_values(self,df:pd.DataFrame) -> pd.DataFrame:
         logging.info("Executing missing values handling startegy.")
-        return self.startegy.handle(df)
+        return self.strategy.handle(df)
     
 if __name__ == "__main__":
     ## load the dataset 
