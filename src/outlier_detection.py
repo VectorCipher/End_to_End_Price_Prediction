@@ -47,13 +47,20 @@ class OutlierDetector:
         return self.strategy.detect_outliers(df)
 
     def handle_outliers(self,df:pd.DataFrame,method="remove",**kwargs)-> pd.DataFrame:
-        outliers = self.detect_outliers(df)
+        numeric_cols = df.select_dtypes(include="number").columns
+        df_numeric = df[numeric_cols]
+        outliers = self.detect_outliers(df_numeric)
         if method == "remove":
             logging.info("Removing outliers from the dataset.")
             df_cleaned = df[(~outliers).all(axis=1)]
         elif method =="cap":
             logging.info("Capping outliers in the dataset.")
-            df_cleaned = df.clip(lower=df.quantile(0.01),upper=df.quantile(0.99),axis =1)
+            df_cleaned = df.copy()
+            df_cleaned[numeric_cols] = df_numeric.clip(
+                lower=df_numeric.quantile(0.01),
+                upper=df_numeric.quantile(0.99),
+                axis=1,
+            )
         else:
             logging.warning(f"Unknown method {method} .No outlier handling performed.")
             return df

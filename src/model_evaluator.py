@@ -38,4 +38,4 @@ class ModelEvaluator:
         
     def evaluate(self, model:RegressorMixin,X_test:pd.DataFrame,y_test:pd.Series):
         logging.info("Evaluating the model")
-        self.strategy.evaluate_model(model,X_test,y_test)
+        return self.strategy.evaluate_model(model,X_test,y_test)

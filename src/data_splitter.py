@@ -27,7 +27,7 @@ class SimpleTrainTestSplit(DataSplittingStrategy):
         return X_train,X_test,y_train,y_test
     
     
-class DataDSplitter:
+class DataSplitter:
     def __init__(self,strategy:DataSplittingStrategy):
         self.strategy = strategy
         
@@ -41,5 +41,5 @@ class DataDSplitter:
 
 if __name__ == "__main__":
     df = pd .read_csv("C:/Users/Naitik/OneDrive/ドキュメント/Projects/End_to_End_Price_Prediction/src/extracted_data/AmesHousing.csv")
-    data_splitter = DataDSplitter(SimpleTrainTestSplit(test_size=0.25,random_state=42))
+    data_splitter = DataSplitter(SimpleTrainTestSplit(test_size=0.25,random_state=42))
     X_train,X_test,y_train,y_test = data_splitter.split(df,target_column="SalePrice")
