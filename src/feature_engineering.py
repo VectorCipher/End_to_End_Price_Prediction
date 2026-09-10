@@ -22,7 +22,7 @@ class LogTransformation(FeatureEngineeringStrategy):
         logging.info(f"Applying log transformation to features : {self.features}")
         df_transformed = df.copy()
         for feature in self.features:
-            df_transformed["feature"] = np.log1p(df[feature])
+            df_transformed[feature] = np.log1p(df[feature])
         logging.info("Log transformation completed.")
         return df_transformed
     
@@ -58,7 +58,7 @@ class MinMaxScaling(FeatureEngineeringStrategy):
 class OneHotEncoding(FeatureEngineeringStrategy):
     def __init__(self,features):
         self.features = features
-        self.encoder = OneHotEncoder(sparse=False,drop="first")
+        self.encoder = OneHotEncoder(sparse_output=False, drop="first")
         
     def apply_transformation(self, df:pd.DataFrame)-> pd.DataFrame:
         logging.info(f"Applying one hot encoding to features:{self.features}")
