@@ -1,6 +1,6 @@
 # 🏠 End-to-End House Price Prediction
 
-An end-to-end machine learning project for predicting house prices using the **Ames Housing dataset**. Built with clean software engineering principles, featuring a modular architecture powered by **Strategy**, **Factory**, and **Template Method** design patterns, and designed for production-grade orchestration with **ZenML** and **MLflow**.
+An end-to-end machine learning project for predicting house prices using the **Ames Housing dataset**. Built with clean software engineering principles, featuring a modular architecture powered by **Strategy**, **Factory**, and **Template Method** design patterns, and orchestrated end to end with **ZenML** and **MLflow**.
 
 ---
 
@@ -18,6 +18,7 @@ An end-to-end machine learning project for predicting house prices using the **A
   - [Analysis Modules (`analysis/`)](#analysis-modules-analysis)
   - [Pipeline & Steps](#pipeline--steps)
 - [Usage](#usage)
+- [Results](#results)
 - [Project Status](#project-status)
 - [License](#license)
 
@@ -31,8 +32,8 @@ This project predicts residential property sale prices in Ames, Iowa using a **L
 - 🧩 **Modular design** — every processing step is strategy-based and interchangeable at runtime
 - 📊 **Comprehensive EDA** — Jupyter notebook with reusable analysis classes
 - 🔧 **Production-ready patterns** — Factory, Strategy, and Template Method design patterns
-- 📈 **Experiment tracking** — designed for MLflow integration
-- 🚀 **Pipeline orchestration** — designed for ZenML pipeline management
+- 📈 **Experiment tracking** — MLflow integration via ZenML experiment tracker
+- 🚀 **Pipeline orchestration** — ZenML training, deployment, and inference pipelines
 
 ---
 
@@ -58,7 +59,8 @@ Analysis classes like `MultiVariateAnalysisTemplate` and `MissingValueAnalysisTe
 
 ```
 End_to_End_Price_Prediction/
-├── main.py                              # Entry point
+├── run_pipeline.py                      # CLI: run the training pipeline
+├── run_deployment.py                    # CLI: deploy + inference (--stop-service to tear down)
 ├── pyproject.toml                       # Project config & dependencies (uv)
 ├── requirements.txt                     # Pip dependencies
 ├── .python-version                      # Python version pin (3.10)
@@ -94,14 +96,15 @@ End_to_End_Price_Prediction/
 │   ├── feature_engineering_step.py
 │   ├── data_splitter_step.py
 │   ├── model_building_step.py
-│   ├── model_evaluater_step.py
+│   ├── model_evaluator_step.py
 │   ├── dynamic_importer.py
 │   ├── model_loader.py
 │   ├── prediction_service_loader.py
 │   └── predictor.py
 │
 └── pipelines/                           # ZenML pipeline definitions
-    └── training_pipeline.py
+    ├── training_pipeline.py             # ingest → clean → split → train → evaluate
+    └── deployment_pipeline.py           # continuous deployment + inference pipelines
 ```
 
 ---
@@ -145,8 +148,12 @@ git clone https://github.com/<your-username>/End_to_End_Price_Prediction.git
 cd End_to_End_Price_Prediction
 
 # Create and activate a virtual environment
-uv init
-uv add -r requirements.txt
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # Linux/macOS
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 ---
@@ -177,15 +184,17 @@ The ML pipeline follows this data flow:
     ↓
 🔍 Missing Value Handling (drop / fill with mean, median, mode, constant)
     ↓
-📈 Outlier Detection & Handling (Z-Score / IQR → remove or cap)
+📈 Outlier Detection & Handling (Z-Score → cap at 1st/99th percentile)
     ↓
-⚙️  Feature Engineering (log transform, standard scaling, min-max scaling, one-hot encoding)
+⚙️  Feature Engineering (log transform on Gr Liv Area)
     ↓
-✂️  Train/Test Split (75/25 default)
+✂️  Train/Test Split (numeric features only, 75/25)
     ↓
 🏗️ Model Building (StandardScaler + Linear Regression pipeline)
     ↓
 📏 Model Evaluation (Mean Squared Error, R² Score)
+    ↓
+🚀 Deployment (MLflow model server) → batch Inference (sample data)
 ```
 
 ---
@@ -205,7 +214,7 @@ The ML pipeline follows this data flow:
 #### `outlier_detection.py` — Outlier Detection
 - `ZScoreOutlierDetection` — flags values where |z-score| exceeds threshold (default: 3)
 - `IQROutlierDetection` — flags values outside Q1 − 1.5×IQR to Q3 + 1.5×IQR
-- `OutlierDetector` — supports remove or cap handling, plus boxplot visualization
+- `OutlierDetector` — supports remove or cap handling (pipeline default: cap at 1st/99th percentile, preserving all rows), plus boxplot visualization
 
 #### `feature_engineering.py` — Feature Engineering
 - `LogTransformation` — applies `log(1+x)` to reduce skewness
@@ -214,7 +223,7 @@ The ML pipeline follows this data flow:
 - `OneHotEncoding` — converts categorical features to binary vectors
 
 #### `data_splitter.py` — Data Splitting
-- `SimpleTrainTestSplit` — sklearn's `train_test_split` with configurable test size and random state
+- `SimpleTrainTestSplit` — sklearn's `train_test_split` with configurable test size and random state; the ZenML step selects numeric features only before splitting
 
 #### `model_building.py` — Model Training
 - `LinearRegressionStrategy` — builds an sklearn `Pipeline` with `StandardScaler` → `LinearRegression`
@@ -239,9 +248,15 @@ The ML pipeline follows this data flow:
 
 ### Pipeline & Steps
 
-The `steps/` directory contains ZenML step wrappers and the `pipelines/` directory contains pipeline definitions. These are scaffolded for integration with ZenML and MLflow for:
+The `steps/` directory contains ZenML step wrappers around the `src/` strategies, and `pipelines/` defines:
 
-- **Reproducible pipeline runs** — every step tracked and versioned
+- **`ml_pipeline`** (`training_pipeline.py`) — ingest → missing values → outliers → feature engineering → split → train → evaluate; registered as the ZenML model `prices_predictor`
+- **`continuous_deployment_pipeline`** (`deployment_pipeline.py`) — runs `ml_pipeline`, then (re)deploys the trained model using ZenML's built-in `mlflow_model_deployer_step`
+- **`inference_pipeline`** (`deployment_pipeline.py`) — loads sample data (`dynamic_importer`), fetches the live MLflow prediction service (`prediction_service_loader`), and runs batch predictions against it (`predictor`)
+
+This provides:
+
+- **Reproducible pipeline runs** — every step tracked, versioned, and cached
 - **Experiment tracking** — parameters, metrics, and model artifacts logged to MLflow
 - **Model serving** — prediction service via MLflow deployment
 
@@ -249,25 +264,43 @@ The `steps/` directory contains ZenML step wrappers and the `pipelines/` directo
 
 ## Usage
 
-### Running Individual Modules
-
-Each source module can be run standalone for testing:
+### One-time setup
 
 ```bash
-# Data ingestion
-python src/ingest_data.py
+uv sync          # install all dependencies (includes zenml[local])
 
-# Missing value handling
-python src/handle_missing_value.py
+# Initialize the ZenML workspace and register the MLflow stack
+zenml init
+zenml experiment-tracker register mlflow_tracker --flavor=mlflow
+zenml model-deployer register mlflow_deployer --flavor=mlflow
+zenml stack register local_mlflow -e mlflow_tracker -d mlflow_deployer -a default -o default --set
+```
 
-# Outlier detection
-python src/outlier_detection.py
+### Running the pipelines
 
-# Feature engineering
-python src/feature_engineering.py
+```powershell
+# Required on every new terminal on Windows (console defaults to cp1252; ZenML needs UTF-8)
+$env:PYTHONUTF8='1'
 
-# Data splitting
-python src/data_splitter.py
+# Training only: ingest → clean → split → train → evaluate (~10s)
+uv run python run_pipeline.py
+
+# Full deployment: train, deploy the model via MLflow, run batch inference
+uv run python run_deployment.py
+
+# Stop the prediction service when done
+uv run python run_deployment.py --stop-service
+```
+
+### Inspecting results
+
+```bash
+# MLflow UI — run the exact command printed at the end of run_pipeline.py, e.g.:
+mlflow ui --backend-store-uri "sqlite:///C:\Users\<user>\AppData\Roaming\zenml\local_stores\<id>\mlflow.db"
+# then open http://127.0.0.1:5000
+
+# ZenML dashboard (pipelines, runs, stacks)
+zenml login --local
 ```
 
 ### Running the EDA Notebook
@@ -275,6 +308,19 @@ python src/data_splitter.py
 ```bash
 jupyter notebook analysis/EDA.ipynb
 ```
+
+> **Windows note:** MLflow model *serving* (the daemon-based prediction server used by `run_deployment.py`) is not supported on native Windows. Training and experiment tracking work fully; for the live prediction service, run under WSL.
+
+---
+
+## Results
+
+Current `prices_predictor` model (Linear Regression on numeric features, trained via `run_pipeline.py`):
+
+| Metric | Value |
+|--------|-------|
+| Mean Squared Error | ~8.0 × 10⁸ |
+| R² Score | 0.875 |
 
 ---
 
@@ -285,10 +331,9 @@ jupyter notebook analysis/EDA.ipynb
 | Core ML Logic (`src/`) | ✅ Complete |
 | EDA & Analysis | ✅ Complete |
 | Design Patterns | ✅ Implemented |
-| ZenML Steps (`steps/`) | 🚧 In Progress |
-| ZenML Pipeline (`pipelines/`) | 🚧 In Progress |
-| MLflow Integration | 🚧 In Progress |
-| Unit Tests | 📋 Planned |
+| ZenML Steps (`steps/`) | ✅ Complete |
+| ZenML Pipeline (`pipelines/`) | ✅ Complete |
+| MLflow Integration | ✅ Complete (tracking verified; serving limited on Windows) |
 | Documentation | ✅ Complete |
 
 ---

@@ -3,7 +3,7 @@ pandas
 scikit-learn
 matplotlib
 seaborn
-zenml
+zenml[local]
 mlflow
 click
 mlflow_skinny
